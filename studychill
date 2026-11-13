@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyAI - Quản lý học tập & Ôn thi chuẩn GDPT 2018</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- PDF.js for reading PDF files -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="text-slate-800 antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- HELPER COMPONENT FOR LUCIDE ICONS ---
+    const Icon = ({ name, size = 18, className = "" }) => {
+      const iconRef = useRef(null);
+
+      useEffect(() => {
+        if (iconRef.current && window.lucide) {
+          iconRef.current.innerHTML = '';
+          const iconElement = document.createElement('i');
+          iconElement.setAttribute('data-lucide', name);
+          iconRef.current.appendChild(iconElement);
+          window.lucide.createIcons({
+            root: iconRef.current,
+            attrs: {
+              width: size,
+              height: size,
+              class: className
+            }
+          });
+        }
+      }, [name, size, className]);
+
+      return <span ref={iconRef} className="inline-flex items-center justify-center shrink-0"></span>;
+    };
+
+    // --- DATE HELPERS ---
+    const getTodayKey = (offsetDays = 0) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const getShortDayLabel = (dateStr) => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+      return `${days[dateObj.getDay()]} (${d}/${m})`;
+    };
+
+    // --- DEFAULT INITIAL DATA ---
+    const DEFAULT_SUBJECTS = [
+      { id: 'sub-1', name: 'Toán học', color: 'bg-blue-500', textColor: 'text-blue-700', bgLight: 'bg-blue-50' },
+      { id: 'sub-2', name: 'Ngữ văn', color: 'bg-rose-500', textColor: 'text-rose-700', bgLight: 'bg-rose-50' },
+      { id: 'sub-3', name: 'Địa lí', color: 'bg-emerald-500', textColor: 'text-emerald-700', bgLight: 'bg-emerald-50' },
+      { id: 'sub-4', name: 'Tiếng Anh', color: 'bg-amber-500', textColor: 'text-amber-700', bgLight: 'bg-amber-50' },
+    ];
+
+    const DEFAULT_TODOS = [
+      { id: 'todo-1', title: 'Giải đề thi thử THPTQG số 01 (GDPT 2018)', subjectId: 'sub-1', priority: 'high', deadline: getTodayKey(0), completed: false },
+      { id: 'todo-2', title: 'Lập dàn ý phân tích tác phẩm văn học', subjectId: 'sub-2', priority: 'medium', deadline: getTodayKey(1), completed: false },
+      { id: 'todo-3', title: 'Ôn tập Atlat Địa lí Việt Nam', subjectId: 'sub-3', priority: 'low', deadline: getTodayKey(2), completed: true },
+    ];
+
+    const SUBJECT_COLORS = [
+      { name: 'Xanh dương', color: 'bg-blue-500', textColor: 'text-blue-700', bgLight: 'bg-blue-50' },
+      { name: 'Đỏ hồng', color: 'bg-rose-500', textColor: 'text-rose-700', bgLight: 'bg-rose-50' },
+      { name: 'Xanh ngọc', color: 'bg-emerald-500', textColor: 'text-emerald-700', bgLight: 'bg-emerald-50' },
+      { name: 'Vàng cam', color: 'bg-amber-500', textColor: 'text-amber-700', bgLight: 'bg-amber-50' },
+      { name: 'Tím', color: 'bg-purple-500', textColor: 'text-purple-700', bgLight: 'bg-purple-50' },
+      { name: 'Xanh lơ', color: 'bg-cyan-500', textColor: 'text-cyan-700', bgLight: 'bg-cyan-50' },
+    ];
+
+    // --- MAIN APPLICATION ---
+    function App() {
+      // Navigation & Modal States
+      const [activeTab, setActiveTab] = useState('planner'); // 'planner' | 'exam'
+      const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+      // Settings / API Key State
+      const [apiKey, setApiKey] = useState(() => localStorage.getItem('studyai_gemini_key') || '');
+      const [tempApiKey, setTempApiKey] = useState(apiKey);
+      const [keySavedToast, setKeySavedToast] = useState(false);
+
+      // --- GAMIFICATION: DAILY CHECK-IN, EXP & STREAK ---
+      const [gamification, setGamification] = useState(() => {
+        const saved = localStorage.getItem('studyai_gamification');
+        if (saved) return JSON.parse(saved);
+        return {
+          exp: 120,
+          streak: 1,
+          lastCheckInDate: null
+        };
+      });
+      const [rewardToast, setRewardToast] = useState(null);
+
+      // --- STUDY LOGS FOR CHART ---
+      const [studyLogs, setStudyLogs] = useState(() => {
+        const saved = localStorage.getItem('studyai_study_logs');
+        if (saved) return JSON.parse(saved);
+        return {
+          [getTodayKey(-4)]: 2700,
+          [getTodayKey(-3)]: 4500,
+          [getTodayKey(-2)]: 1800,
+          [getTodayKey(-1)]: 5400,
+          [getTodayKey(0)]: 1500,
+        };
+      });
+
+      // --- TAB 1 STATES: PLANNER & MULTI-MODE TIMER ---
+      const [subjects, setSubjects] = useState(() => {
+        const saved = localStorage.getItem('studyai_subjects');
+        return saved ? JSON.parse(saved) : DEFAULT_SUBJECTS;
+      });
+      const [todos, setTodos] = useState(() => {
+        const saved = localStorage.getItem('studyai_todos');
+        return saved ? JSON.parse(saved) : DEFAULT_TODOS;
+      });
+
+      const [newSubjectName, setNewSubjectName] = useState('');
+      const [selectedColorIdx, setSelectedColorIdx] = useState(0);
+
+      const [todoTitle, setTodoTitle] = useState('');
+      const [todoSubjectId, setTodoSubjectId] = useState(subjects[0]?.id || '');
+      const [todoPriority, setTodoPriority] = useState('medium');
+      const [todoDeadline, setTodoDeadline] = useState(getTodayKey(0));
+      const [filterSubject, setFilterSubject] = useState('all');
+
+      // Multi-mode Timer States (Tab 1)
+      const [timerType, setTimerType] = useState('pomodoro');
+      const [pomodoroPhase, setPomodoroPhase] = useState('work');
+      const [customMinutes, setCustomMinutes] = useState(45);
+      const [secondsValue, setSecondsValue] = useState(25 * 60);
+      const [isRunning, setIsRunning] = useState(false);
+      const [pomodoroSessions, setPomodoroSessions] = useState(() => Number(localStorage.getItem('studyai_pomo_count')) || 0);
+
+      // --- TAB 2 STATES: AI EXAM GENERATOR & SAVED EXAMS ---
+      const [studyMaterial, setStudyMaterial] = useState('');
+      const [fileName, setFileName] = useState('');
+      const [isParsingFile, setIsParsingFile] = useState(false);
+
+      // Exam Configuration
+      const [examTitleInput, setExamTitleInput] = useState('');
+      const [questionCountMode, setQuestionCountMode] = useState('10'); // '5' | '10' | '20' | 'custom'
+      const [customQuestionCount, setCustomQuestionCount] = useState(15);
+      const [difficulty, setDifficulty] = useState('Trung bình');
+      const [questionType, setQuestionType] = useState('Trắc nghiệm 4 đáp án');
+      const [examSessionMode, setExamSessionMode] = useState('exam'); // 'exam' (Thi thử có bấm giờ) | 'review' (Ôn tập tự do)
+
+      // Saved Exams Library (Ôn tập bất cứ lúc nào)
+      const [savedExams, setSavedExams] = useState(() => {
+        const saved = localStorage.getItem('studyai_saved_exams');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [showSavedDrawer, setShowSavedDrawer] = useState(false);
+
+      // Active Exam Execution States
+      const [isGenerating, setIsGenerating] = useState(false);
+      const [examError, setExamError] = useState('');
+      const [currentExam, setCurrentExam] = useState(null); // { id, title, questionType, difficulty, questions, createdAt }
+      const [userAnswers, setUserAnswers] = useState({});
+      const [isSubmitted, setIsSubmitted] = useState(false);
+      const [examHistorySeed, setExamHistorySeed] = useState(0);
+
+      // Exam Unlimited Stopwatch (Bộ đếm thời gian không giới hạn trong
